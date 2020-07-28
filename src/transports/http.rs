@@ -6,7 +6,7 @@ use futures::{
     task::{Context, Poll},
     Future, FutureExt, StreamExt,
 };
-use hyper::header::HeaderValue;
+use hyper::header::{HeaderMap, HeaderValue};
 use std::{
     env, fmt,
     ops::Deref,
@@ -74,13 +74,18 @@ impl Client {
 pub struct Http {
     id: Arc<AtomicUsize>,
     url: hyper::Uri,
-    basic_auth: Option<HeaderValue>,
     client: Client,
+    headers: HeaderMap,
 }
 
 impl Http {
     /// Create new HTTP transport connecting to given URL.
     pub fn new(url: &str) -> error::Result<Self> {
+        Self::with_headers(url, HeaderMap::new())
+    }
+
+    /// Create new HTTP transport connecting to given URL, with the given additional headers.
+    pub fn with_headers(url: &str, mut headers: HeaderMap) -> error::Result<Self> {
         #[cfg(feature = "http-tls")]
         let (proxy_env, connector) = { (env::var("HTTPS_PROXY"), hyper_tls::HttpsConnector::new()) };
         #[cfg(feature = "http-rustls")]
@@ -118,22 +123,26 @@ impl Http {
             Err(_) => Client::NoProxy(hyper::Client::builder().build(connector)),
         };
 
-        let basic_auth = {
-            let url = Url::parse(url)?;
-            let user = url.username();
-            let auth = format!("{}:{}", user, url.password().unwrap_or_default());
-            if &auth == ":" {
-                None
-            } else {
-                Some(HeaderValue::from_str(&format!("Basic {}", base64::encode(&auth)))?)
-            }
-        };
+        // Check if there is basic auth information in the URL
+        let parsed_url = Url::parse(url)?;
+        let basic_auth = format!(
+            "{}:{}",
+            parsed_url.username(),
+            parsed_url.password().unwrap_or_default()
+        );
+        if basic_auth != ":" {
+            // Add Authorization header for basic auth but ONLY if the
+            // header isn't already present in the provided headers
+            let basic_auth_header = HeaderValue::from_str(&format!("Basic {}", base64::encode(&basic_auth)))?;
+
+            headers.entry(hyper::header::AUTHORIZATION).or_insert(basic_auth_header);
+        }
 
         Ok(Http {
             id: Arc::new(AtomicUsize::new(1)),
             url: url.parse()?,
-            basic_auth,
             client,
+            headers,
         })
     }
 
@@ -159,11 +168,9 @@ impl Http {
             req.headers_mut().insert(hyper::header::CONTENT_LENGTH, len.into());
         }
 
-        // Send basic auth header
-        if let Some(ref basic_auth) = self.basic_auth {
-            req.headers_mut()
-                .insert(hyper::header::AUTHORIZATION, basic_auth.clone());
-        }
+        // Add headers
+        req.headers_mut().extend(self.headers.clone());
+
         let result = self.client.request(req);
 
         Response::new(id, result, extract)
@@ -297,26 +304,55 @@ mod tests {
 
     #[test]
     fn http_supports_basic_auth_with_user_and_password() {
-        let http = Http::new("https://user:password@127.0.0.1:8545").unwrap();
-        assert!(http.basic_auth.is_some());
-        assert_eq!(
-            http.basic_auth,
-            Some(HeaderValue::from_static("Basic dXNlcjpwYXNzd29yZA=="))
-        )
+        let http = Http::new("https://user:password@127.0.0.1:8545");
+
+        let mut expected_headers = HeaderMap::new();
+        expected_headers.insert(
+            hyper::header::AUTHORIZATION,
+            HeaderValue::from_static("Basic dXNlcjpwYXNzd29yZA=="),
+        );
+
+        assert!(http.is_ok());
+
+        match http {
+            Ok(transport) => assert_eq!(transport.headers, expected_headers),
+            Err(_) => assert!(false, ""),
+        }
     }
 
     #[test]
     fn http_supports_basic_auth_with_user_no_password() {
-        let http = Http::new("https://username:@127.0.0.1:8545").unwrap();
-        assert!(http.basic_auth.is_some());
-        assert_eq!(http.basic_auth, Some(HeaderValue::from_static("Basic dXNlcm5hbWU6")))
+        let http = Http::new("https://username:@127.0.0.1:8545");
+
+        let mut expected_headers = HeaderMap::new();
+        expected_headers.insert(
+            hyper::header::AUTHORIZATION,
+            HeaderValue::from_static("Basic dXNlcm5hbWU6"),
+        );
+
+        assert!(http.is_ok());
+
+        match http {
+            Ok(transport) => assert_eq!(transport.headers, expected_headers),
+            Err(_) => assert!(false, ""),
+        }
     }
 
     #[test]
     fn http_supports_basic_auth_with_only_password() {
-        let http = Http::new("https://:password@127.0.0.1:8545").unwrap();
-        assert!(http.basic_auth.is_some());
-        assert_eq!(http.basic_auth, Some(HeaderValue::from_static("Basic OnBhc3N3b3Jk")))
+        let http = Http::new("https://:password@127.0.0.1:8545");
+
+        let mut expected_headers = HeaderMap::new();
+        expected_headers.insert(
+            hyper::header::AUTHORIZATION,
+            HeaderValue::from_static("Basic OnBhc3N3b3Jk"),
+        );
+
+        assert!(http.is_ok());
+        match http {
+            Ok(transport) => assert_eq!(transport.headers, expected_headers),
+            Err(_) => assert!(false, ""),
+        }
     }
 
     async fn server(req: hyper::Request<hyper::Body>) -> hyper::Result<hyper::Response<hyper::Body>> {
@@ -335,6 +371,41 @@ mod tests {
         assert_eq!(std::str::from_utf8(&*content), Ok(expected));
 
         Ok(hyper::Response::new(response.into()))
+    }
+
+    #[test]
+    fn http_supports_custom_headers() {
+        let mut expected_headers = HeaderMap::new();
+        expected_headers.insert(
+            hyper::header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+
+        let http = Http::with_headers("https://127.0.0.1:8545", expected_headers.clone());
+
+        assert!(http.is_ok());
+        match http {
+            Ok(transport) => assert_eq!(transport.headers, expected_headers),
+            Err(_) => assert!(false, ""),
+        }
+    }
+
+    #[test]
+    fn http_basic_auth_does_not_override_authorization_header() {
+        let mut expected_headers = HeaderMap::new();
+        expected_headers.insert(hyper::header::AUTHORIZATION, HeaderValue::from_static("Bearer foo"));
+        expected_headers.insert(
+            hyper::header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+
+        let http = Http::with_headers("https://username:password@127.0.0.1:8545", expected_headers.clone());
+
+        assert!(http.is_ok());
+        match http {
+            Ok(transport) => assert_eq!(transport.headers, expected_headers),
+            Err(_) => assert!(false, ""),
+        }
     }
 
     #[tokio::test]
