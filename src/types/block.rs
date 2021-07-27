@@ -35,6 +35,9 @@ pub struct BlockHeader {
     #[serde(rename = "gasLimit")]
     #[serde(default)] // Celo doesn't have this field.
     pub gas_limit: U256,
+    /// Base fee per unit of gas (if past London)
+    #[serde(rename = "baseFeePerGas")]
+    pub base_fee_per_gas: Option<U256>,
     /// Extra data
     #[serde(rename = "extraData")]
     pub extra_data: Bytes,
@@ -88,6 +91,9 @@ pub struct Block<TX> {
     #[serde(rename = "gasLimit")]
     #[serde(default)] // Celo doesn't have this field.
     pub gas_limit: U256,
+    /// Base fee per unit of gas (if past London)
+    #[serde(rename = "baseFeePerGas")]
+    pub base_fee_per_gas: Option<U256>,
     /// Extra data
     #[serde(rename = "extraData")]
     pub extra_data: Bytes,
