@@ -240,7 +240,7 @@ pub struct Suicide {
     /// Address.
     pub address: Address,
     /// Refund address.
-    #[serde(rename = "refundAddress")]
+    #[serde(alias = "refundAddress")]
     pub refund_address: Address,
     /// Balance.
     pub balance: U256,
