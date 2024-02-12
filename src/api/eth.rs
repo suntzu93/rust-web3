@@ -108,9 +108,9 @@ impl<T: Transport> Eth<T> {
     }
 
     /// Get balance of given address
-    pub fn balance(&self, address: Address, block: Option<BlockNumber>) -> CallFuture<U256, T::Out> {
+    pub fn balance(&self, address: Address, block: Option<BlockId>) -> CallFuture<U256, T::Out> {
         let address = helpers::serialize(&address);
-        let block = helpers::serialize(&block.unwrap_or(BlockNumber::Latest));
+        let block = helpers::serialize(&block.unwrap_or_else(|| BlockNumber::Latest.into()));
 
         CallFuture::new(self.transport.execute("eth_getBalance", vec![address, block]))
     }
