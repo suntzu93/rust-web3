@@ -139,6 +139,22 @@ impl<T: Transport> Eth<T> {
         CallFuture::new(result)
     }
 
+    /// Get block receipts
+    pub fn block_receipts(&self, block: BlockId) -> CallFuture<Option<Vec<TransactionReceipt>>, T::Out> {
+        let result = match block {
+            BlockId::Hash(hash) => {
+                let hash = helpers::serialize(&hash);
+                self.transport.execute("eth_getBlockReceipts", vec![hash])
+            }
+            BlockId::Number(num) => {
+                let num = helpers::serialize(&num);
+                self.transport.execute("eth_getBlockReceipts", vec![num])
+            }
+        };
+
+        CallFuture::new(result)
+    }
+
     /// Get block details with full transaction objects.
     pub fn block_with_txs(&self, block: BlockId) -> CallFuture<Option<Block<Transaction>>, T::Out> {
         let include_txs = helpers::serialize(&true);
@@ -505,6 +521,21 @@ mod tests {
     "status": "0x1",
     "effectiveGasPrice": "0x100"
   }"#;
+  
+    const EXAMPLE_BLOCK_RECEIPTS: &str = r#"[{
+    "transactionHash": "0xb903239f8543d04b5dc1ba6579132b143087c68db1b2168786408fcbce568238",
+    "transactionIndex": "0x1",
+    "from": "0xa7d9ddbe1f17865597fbd27ec712455208b6b76d",
+    "blockNumber": "0xb",
+    "blockHash": "0xc6ef2fc5426d6ad6fd9e2a26abeab0aa2411b7ab17f30a99d3cb96aed1d1055b",
+    "cumulativeGasUsed": "0x33bc",
+    "gasUsed": "0x4dc",
+    "contractAddress": "0xb60e8dd61c5d32be8058bb8eb970870f07233155",
+    "logsBloom":  "0x0e670ec64341771606e55d6b4ca35a1a6b75ee3d5145a99d05921026d15273310e670ec64341771606e55d6b4ca35a1a6b75ee3d5145a99d05921026d15273310e670ec64341771606e55d6b4ca35a1a6b75ee3d5145a99d05921026d15273310e670ec64341771606e55d6b4ca35a1a6b75ee3d5145a99d05921026d15273310e670ec64341771606e55d6b4ca35a1a6b75ee3d5145a99d05921026d15273310e670ec64341771606e55d6b4ca35a1a6b75ee3d5145a99d05921026d15273310e670ec64341771606e55d6b4ca35a1a6b75ee3d5145a99d05921026d15273310e670ec64341771606e55d6b4ca35a1a6b75ee3d5145a99d05921026d1527331",
+    "logs": [],
+    "status": "0x1",
+    "effectiveGasPrice": "0x100"
+  }]"#;
 
     const EXAMPLE_FEE_HISTORY: &str = r#"{
       "baseFeePerGas": [
@@ -680,6 +711,14 @@ mod tests {
       "eth_getBlockByNumber", vec![r#""pending""#, r#"true"#];
       ::serde_json::from_str(EXAMPLE_BLOCK).unwrap()
       => Some(::serde_json::from_str::<Block<Transaction>>(EXAMPLE_BLOCK).unwrap())
+    );
+
+    rpc_test! (
+      Eth:block_receipts, BlockId::Number(100i64.into())
+      =>
+      "eth_getBlockReceipts", vec![r#""0x64""#];
+      ::serde_json::from_str(EXAMPLE_BLOCK_RECEIPTS).unwrap()
+      => Some(::serde_json::from_str::<Vec<TransactionReceipt>>(EXAMPLE_BLOCK_RECEIPTS).unwrap())
     );
 
     rpc_test! (
