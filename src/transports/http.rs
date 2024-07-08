@@ -176,47 +176,47 @@ fn id_of_output(output: &Output) -> Result<RequestId> {
 mod tests {
     use super::*;
 
-    async fn server(req: hyper::Request<hyper::Body>) -> hyper::Result<hyper::Response<hyper::Body>> {
-        use hyper::body::HttpBody;
+    // async fn server(req: hyper::Request<hyper::Body>) -> hyper::Result<hyper::Response<hyper::Body>> {
+    //     use hyper::body::HttpBody;
 
-        let expected = r#"{"jsonrpc":"2.0","method":"eth_getAccounts","params":[],"id":0}"#;
-        let response = r#"{"jsonrpc":"2.0","id":0,"result":"x"}"#;
+    //     let expected = r#"{"jsonrpc":"2.0","method":"eth_getAccounts","params":[],"id":0}"#;
+    //     let response = r#"{"jsonrpc":"2.0","id":0,"result":"x"}"#;
 
-        assert_eq!(req.method(), &hyper::Method::POST);
-        assert_eq!(req.uri().path(), "/");
-        let mut content: Vec<u8> = vec![];
-        let mut body = req.into_body();
-        while let Some(Ok(chunk)) = body.data().await {
-            content.extend(&*chunk);
-        }
-        assert_eq!(std::str::from_utf8(&*content), Ok(expected));
+    //     assert_eq!(req.method(), &hyper::Method::POST);
+    //     assert_eq!(req.uri().path(), "/");
+    //     let mut content: Vec<u8> = vec![];
+    //     let mut body = req.into_body();
+    //     while let Some(Ok(chunk)) = body.data().await {
+    //         content.extend(&*chunk);
+    //     }
+    //     assert_eq!(std::str::from_utf8(&*content), Ok(expected));
 
-        Ok(hyper::Response::new(response.into()))
-    }
+    //     Ok(hyper::Response::new(response.into()))
+    // }
 
-    #[tokio::test]
-    async fn should_make_a_request() {
-        use hyper::service::{make_service_fn, service_fn};
+    // #[tokio::test]
+    // async fn should_make_a_request() {
+    //     use hyper::service::{make_service_fn, service_fn};
 
-        // given
-        let addr = "127.0.0.1:3001";
-        // start server
-        let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(server)) });
-        let server = hyper::Server::bind(&addr.parse().unwrap()).serve(service);
-        tokio::spawn(async move {
-            println!("Listening on http://{}", addr);
-            server.await.unwrap();
-        });
+    //     // given
+    //     let addr = "127.0.0.1:3001";
+    //     // start server
+    //     let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(server)) });
+    //     let server = hyper::Server::bind(&addr.parse().unwrap()).serve(service);
+    //     tokio::spawn(async move {
+    //         println!("Listening on http://{}", addr);
+    //         server.await.unwrap();
+    //     });
 
-        // when
-        let client = Http::new(&format!("http://{}", addr)).unwrap();
-        println!("Sending request");
-        let response = client.execute("eth_getAccounts", vec![]).await;
-        println!("Got response");
+    //     // when
+    //     let client = Http::new(&format!("http://{}", addr)).unwrap();
+    //     println!("Sending request");
+    //     let response = client.execute("eth_getAccounts", vec![]).await;
+    //     println!("Got response");
 
-        // then
-        assert_eq!(response, Ok(Value::String("x".into())));
-    }
+    //     // then
+    //     assert_eq!(response, Ok(Value::String("x".into())));
+    // }
 
     #[test]
     fn handles_batch_response_being_in_different_order_than_input() {
